@@ -54,5 +54,13 @@ llm:
   ollama_model: "llama3.2:latest"
   ollama_timeout: 120
 
+  ollama_qa_enabled: true
+
   ollama_fallback_models:
     - "llama3.1:latest"
+
+research:
+  ddg_enabled: true
+  ddg_max_results: 5
+  # opcional: deixe vazio para usar query automática pelo nicho
+  ddg_query: ""

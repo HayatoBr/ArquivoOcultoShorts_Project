@@ -3,6 +3,7 @@ import json
 import datetime
 import shutil
 from pathlib import Path
+import time
 
 import yaml
 
@@ -18,6 +19,22 @@ from core.wav_utils import wav_duration_seconds
 
 from core.utils.healthcheck import run_healthcheck
 from core.utils.retry import retry
+
+
+def _ts():
+    return time.strftime("%H:%M:%S")
+
+
+def _step(i: int, total: int, title: str):
+    print(f"== [{i}/{total}] {title} ==")
+
+
+def _ok(msg: str):
+    print(f"OK: {msg}")
+
+
+def _warn(msg: str):
+    print(f"AVISO: {msg}")
 
 
 def load_cfg(path=os.path.join("config", "config.yml")):
@@ -56,85 +73,45 @@ def _read_text(path: str) -> str:
 
 
 def _build_llm_adapter(cfg: dict):
-    # Optional adapter for agents that accept LLM, but script_generator already handles fallback.
+    # Optional adapter for agents that accept LLM.
     llm_cfg = (cfg.get("llm") or {})
-    gem_key = os.environ.get("GEMINI_API_KEY") or llm_cfg.get("gemini_api_key")
     ollama_url = os.environ.get("OLLAMA_URL") or llm_cfg.get("ollama_url", "http://127.0.0.1:11434")
-    ollama_model = os.environ.get("OLLAMA_MODEL") or llm_cfg.get("ollama_model", "llama3.1")
-
-    gemini = None
-    ollama = None
-    if gem_key:
-        try:
-            from core.script.llm_gemini import GeminiLLM  # type: ignore
-            gemini = GeminiLLM(api_key=gem_key, model=llm_cfg.get("gemini_model", "gemini-2.0-flash"))
-        except Exception:
-            gemini = None
+    ollama_model = os.environ.get("OLLAMA_MODEL") or llm_cfg.get("ollama_model", "llama3.2:latest")
 
     try:
         from core.script.llm_ollama import OllamaLLM  # type: ignore
-        ollama = OllamaLLM(base_url=ollama_url, model=ollama_model)
+        return OllamaLLM(base_url=ollama_url, model=ollama_model)
     except Exception:
-        ollama = None
-
-    return gemini or ollama
+        return None
 
 
-def _maybe_upload_youtube(cfg: dict, job_dir: str, video_path: str, title: str, description: str, tags: list[str], privacy: str = "unlisted"):
-    yt_cfg = (cfg.get("youtube_upload") or {})
-    if not bool(yt_cfg.get("enabled", False)):
-        return {"enabled": False, "status": "disabled"}
-    try:
-        from core.youtube.uploader import upload_video  # local module added in patch
-        secrets_dir = yt_cfg.get("secrets_dir", "secrets")
-        client_secret = yt_cfg.get("client_secret", os.path.join(secrets_dir, "client_secret.json"))
-        token_path = yt_cfg.get("token_path", os.path.join(secrets_dir, "youtube_token.json"))
-        res = upload_video(
-            video_path=video_path,
-            title=title,
-            description=description,
-            tags=tags,
-            privacy_status=privacy,
-            client_secret_path=client_secret,
-            token_path=token_path,
-        )
-        return {"enabled": True, "status": "ok", "result": res}
-    except Exception as e:
-        return {"enabled": True, "status": "error", "error": str(e)}
-
-
-def run(test_mode: bool = False):
+def run(test_mode: bool = False, **_ignored_kwargs):
+    """Pipeline principal.
+    test_mode=True força rotas gratuitas (Wiki+DDG+Ollama) dentro do script_generator,
+    evitando gastar OpenAI durante testes.
+    """
+    t0 = time.time()
     cfg = load_cfg()
     cfg["project_root"] = os.path.abspath(os.getcwd())
+    cfg.setdefault("llm", {})
+    cfg["llm"]["test_mode"] = bool(test_mode)
 
-    # 0) Healthcheck
+    total_steps = 7
+
+    # 1) Healthcheck
+    _step(1, total_steps, "Healthcheck")
     hc = {}
     try:
         hc = run_healthcheck(cfg)
         if hc.get("enabled"):
-            print("== HEALTHCHECK ==")
-            for it in hc.get("items", [])[:80]:
-                if not it.get("ok") and it.get("severity") in ("error", "warn"):
-                    print(f"[{it.get('severity').upper()}] {it.get('name')}: {it.get('detail','')}")
             if hc.get("ok"):
-                print("OK: healthcheck passou.")
+                _ok("healthcheck passou")
             else:
-                print("AVISO: healthcheck detectou erros (veja acima).")
+                _warn("healthcheck detectou avisos/erros (ver log)")
                 if bool((cfg.get("healthcheck") or {}).get("hard_fail", False)):
                     raise RuntimeError("Healthcheck falhou e healthcheck.hard_fail=true")
     except Exception as e:
-        print("AVISO: healthcheck falhou/indisponível:", e)
-
-    # 1) Bootstrap catalog (validate + autofill + normalize)
-    catalog_meta = {}
-    catalog_errors = []
-    try:
-        from core.agents.theme_catalog_bootstrap import bootstrap_theme_catalog
-        ok, catalog_meta, catalog_errors = bootstrap_theme_catalog(cfg)
-        if not ok:
-            raise RuntimeError("Catálogo inválido e hard_fail_on_invalid_catalog=true")
-    except Exception as e:
-        print("AVISO: bootstrap do catálogo falhou:", e)
+        _warn(f"healthcheck falhou/indisponível: {e}")
 
     seconds = int((cfg.get("video") or {}).get("seconds", 60))
     out_root = (cfg.get("paths") or {}).get("output_dir", "output")
@@ -144,43 +121,41 @@ def run(test_mode: bool = False):
     images_dir = jobp / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    # 2) Script + enforce duration via TTS feedback loop
+    # 2) Script
+    _step(2, total_steps, "Roteiro (LLM/Wiki)")
     script_path = str(jobp / "script.txt")
-
-    # Generate script (already includes cleaner + policy + duration estimate)
     script_provider = "unknown"
     source_title = ""
     source_url = ""
     policy_action = ""
     policy_findings = []
 
-    try:
-        res = generate_short_script(cfg, out_path=script_path, test_mode=test_mode)
-        # generate_short_script returns path or ScriptGenResult depending on version; be defensive
-        if isinstance(res, str):
-            script_path = res
-        else:
-            script_path = getattr(res, "out_path", script_path) or script_path  # type: ignore[attr-defined]
-            script_provider = getattr(res, "provider", script_provider)  # type: ignore[attr-defined]
-            source_title = getattr(res, "source_title", "")  # type: ignore[attr-defined]
-            source_url = getattr(res, "source_url", "")  # type: ignore[attr-defined]
-            policy_action = getattr(res, "policy_action", "")  # type: ignore[attr-defined]
-            policy_findings = getattr(res, "policy_findings", [])  # type: ignore[attr-defined]
-        print(f"OK: roteiro gerado em {script_path}")
-    except Exception as e:
-        print("AVISO: falhou geração de roteiro:", e)
+    s0 = time.time()
+    res = generate_short_script(cfg, out_path=script_path, test_mode=test_mode)
+    if isinstance(res, str):
+        script_path = res
+    else:
+        script_path = getattr(res, "out_path", script_path) or script_path  # type: ignore[attr-defined]
+        script_provider = getattr(res, "provider", script_provider)  # type: ignore[attr-defined]
+        source_title = getattr(res, "source_title", "")  # type: ignore[attr-defined]
+        source_url = getattr(res, "source_url", "")  # type: ignore[attr-defined]
+        policy_action = getattr(res, "policy_action", "")  # type: ignore[attr-defined]
+        policy_findings = getattr(res, "policy_findings", [])  # type: ignore[attr-defined]
+    _ok(f"roteiro gerado em {script_path} ({script_provider}) em {time.time()-s0:.1f}s")
 
-    # 2.1) Lock theme preset id for this job
+    # 3) Fix theme preset (optional)
+    _step(3, total_steps, "Preset do tema (opcional)")
     try:
         from core.agents.theme_job_preset_auto import ensure_job_theme_preset_id
         llm = _build_llm_adapter(cfg)
         chosen = ensure_job_theme_preset_id(job_dir=jobp, script_text=_read_text(script_path), cfg=cfg, llm=llm)
         if chosen:
-            print(f"OK: preset do tema fixado no job ({chosen})")
+            _ok(f"preset do tema fixado no job ({chosen})")
     except Exception as e:
-        print("AVISO: não foi possível fixar preset do tema:", e)
+        _warn(f"não foi possível fixar preset do tema: {e}")
 
-    # 3) TTS loop (if narration too long, shorten and retry a few times)
+    # 4) TTS
+    _step(4, total_steps, "Narração (Piper)")
     narration_wav = str(jobp / "narration.wav")
     max_tts_attempts = int((cfg.get("video") or {}).get("tts_fit_attempts", 3))
     target_sec = seconds
@@ -197,25 +172,22 @@ def run(test_mode: bool = False):
     tts_attempts = 0
     while tts_attempts < max_tts_attempts:
         tts_attempts += 1
-        try:
-            tts_dur = retry(lambda: _tts_once(script_text), attempts=2, base_delay=1.0)
-            print(f"OK: narração gerada (tentativa {tts_attempts}) duração ~{tts_dur:.1f}s")
-        except Exception as e:
-            raise RuntimeError(f"Falha ao gerar narração: {e}")
+        tts_dur = retry(lambda: _tts_once(script_text), attempts=2, base_delay=1.0)
+        _ok(f"narração gerada (tentativa {tts_attempts}) duração ~{tts_dur:.1f}s")
 
         if tts_dur <= target_sec + tolerance:
             break
 
-        # shorten
         fit = fit_to_duration(script_text, target_seconds=target_sec, wpm=int((cfg.get("video") or {}).get("wpm", 155)))
         script_text = fit.get("text", script_text)
         try:
             Path(script_path).write_text(script_text, encoding="utf-8")
         except Exception:
             pass
-        print(f"AVISO: narração longa ({tts_dur:.1f}s). Ajustando roteiro e tentando novamente...")
+        _warn(f"narração longa ({tts_dur:.1f}s). Ajustando roteiro e tentando novamente...")
 
-    # 4) Images with retry/fallback
+    # 5) Images
+    _step(5, total_steps, "Imagens (Diffusers)")
     n_images = int(max(3, min(8, round(seconds / 12))))
     images = []
     try:
@@ -224,46 +196,38 @@ def run(test_mode: bool = False):
         images = retry(_gen, attempts=int((cfg.get("images") or {}).get("retry_attempts", 3)), base_delay=float((cfg.get("images") or {}).get("retry_base_delay", 1.0)))
         if not images:
             raise RuntimeError("Nenhuma imagem foi gerada.")
-        print(f"OK: imagens geradas: {len(images)}")
+        _ok(f"imagens geradas: {len(images)}")
     except Exception as e:
-        print("AVISO: falhou geração de imagens, usando fallback:", e)
+        _warn(f"falhou geração de imagens, usando fallback: {e}")
         img_out = str(images_dir / "scene_01.png")
         try:
             generate_scene1(cfg, img_out)
             images = [img_out]
-        except Exception:
+            _ok("fallback de imagem gerado (scene_01.png)")
+        except Exception as ee:
+            _warn(f"fallback também falhou: {ee}")
             images = []
 
-    # 5) Music selection + mix
+    # 6) Audio mix + subs
+    _step(6, total_steps, "Áudio + Legendas (FFmpeg/Whisper)")
     music_path = select_audio(cfg)
     mixed_wav = str(jobp / "mix.wav")
     retry(lambda: mix_audio(cfg, narration_wav, music_path, mixed_wav), attempts=2, base_delay=1.0)
-    print(f"OK: mix gerado em {mixed_wav}")
+    _ok(f"mix gerado em {mixed_wav}")
 
-    # 6) Whisper -> SRT, then ASS
     srt_path = str(jobp / "subs.srt")
     ass_path = str(jobp / "subs.ass")
-
     retry(lambda: transcribe_whisper(cfg, mixed_wav, srt_path), attempts=2, base_delay=1.0)
     make_cinematic_ass_from_srt(srt_path, ass_path, cfg=cfg)
-    print(f"OK: legendas geradas em {ass_path}")
+    _ok(f"legendas geradas em {ass_path}")
 
     # 7) Render
+    _step(7, total_steps, "Render final (FFmpeg)")
     out_mp4 = str(jobp / "short.mp4")
     retry(lambda: render_short_video(cfg, images, mixed_wav, ass_path, out_mp4, seconds=seconds), attempts=2, base_delay=1.0)
-    print(f"OK: vídeo final em {out_mp4}")
+    _ok(f"vídeo final em {out_mp4}")
 
     _copy_latest(out_mp4)
-
-    # 8) Optional YouTube upload (unlisted by default)
-    meta = (cfg.get("channel") or {})
-    title = (meta.get("default_title_prefix") or "Arquivo Oculto") + " — " + (source_title or "Caso investigativo")
-    description = (meta.get("default_description") or "").strip()
-    if description:
-        description += "\n\n"
-    description += "Conteúdo gerado com auxílio de IA. Base documental/aberta quando aplicável."
-    tags = (meta.get("default_tags") or ["mistério", "casos reais", "investigação", "arquivo oculto"])
-    yt = _maybe_upload_youtube(cfg, job_dir, out_mp4, title=title, description=description, tags=tags, privacy="unlisted")
 
     manifest = {
         "job_dir": job_dir,
@@ -279,18 +243,17 @@ def run(test_mode: bool = False):
         "subs_ass": ass_path,
         "video": out_mp4,
         "healthcheck": hc,
-        "theme_catalog_bootstrap": {"meta": catalog_meta, "errors": catalog_errors},
         "script_meta": {
             "provider": script_provider,
-            "test_mode": bool(test_mode),
             "source_title": source_title,
             "source_url": source_url,
             "policy_action": policy_action,
             "policy_findings": policy_findings,
         },
-        "youtube_upload": yt,
+        "timing": {"total_seconds": round(time.time() - t0, 2)},
     }
     with open(str(jobp / "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
+    _ok(f"pipeline completo em {time.time()-t0:.1f}s")
     return out_mp4
