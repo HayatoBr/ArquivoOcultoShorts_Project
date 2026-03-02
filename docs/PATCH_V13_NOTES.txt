@@ -1,0 +1,1 @@
+PATCH V13: Fix subtitles filter path on Windows by converting backslashes to forward slashes.

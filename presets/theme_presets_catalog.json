@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "selection": {
+    "mode": "weighted_random",
+    "seed_from_job": true
+  },
+  "themes": {
+    "desaparecimento": [
+      {
+        "id": "desaparecimento_v1_coldfog",
+        "weight": 0.55,
+        "visual_profile": "cold desaturated palette, foggy atmosphere, low light, subtle film grain, investigative tone",
+        "negative_profile": "bright sunny lighting, vibrant colors, cheerful mood",
+        "character_anchor_hint": "investigador tenso, olhar preocupado, ambiente frio e sombrio"
+      },
+      {
+        "id": "desaparecimento_v2_nightsearch",
+        "weight": 0.45,
+        "visual_profile": "nighttime searchlight look, deep shadows, rain haze, cinematic documentary realism, film grain",
+        "negative_profile": "daylight, vibrant colors, cheerful mood",
+        "character_anchor_hint": "investigador cansado, olhar vigilante, luz dura, noite chuvosa"
+      }
+    ],
+    "caso_historico": [
+      {
+        "id": "caso_historico_v1_archival",
+        "weight": 0.6,
+        "visual_profile": "documentary realism, slightly faded colors, archival look, soft contrast",
+        "negative_profile": "modern neon lighting, futuristic elements",
+        "character_anchor_hint": "narrador documental, expressão neutra, estilo clássico"
+      },
+      {
+        "id": "caso_historico_v2_newspaper",
+        "weight": 0.4,
+        "visual_profile": "archival newspaper photo feel, monochrome sepia, soft grain, vintage documentary",
+        "negative_profile": "high saturation, modern neon, sci-fi",
+        "character_anchor_hint": "investigador clássico, terno simples, luz suave, olhar sério"
+      }
+    ],
+    "conspiracao": [
+      {
+        "id": "conspiracao_v1_noir",
+        "weight": 0.6,
+        "visual_profile": "dark noir lighting, strong shadows, high contrast, dramatic atmosphere",
+        "negative_profile": "bright comedy style, colorful cartoonish look",
+        "character_anchor_hint": "investigador desconfiado, luz lateral dramática"
+      },
+      {
+        "id": "conspiracao_v2_facility",
+        "weight": 0.4,
+        "visual_profile": "industrial facility mood, cold fluorescent light, deep shadows, documentary realism, grain",
+        "negative_profile": "warm cozy lighting, cheerful palette",
+        "character_anchor_hint": "investigador alerta, expressão tensa, ambiente industrial"
+      }
+    ],
+    "default": [
+      {
+        "id": "default_v1_channel",
+        "weight": 1.0,
+        "visual_profile": "",
+        "negative_profile": "",
+        "character_anchor_hint": ""
+      }
+    ]
+  }
+}

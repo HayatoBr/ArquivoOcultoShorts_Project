@@ -1,0 +1,11 @@
+PATCH V9 — Subtitle Bottom Fix
+=============================
+
+Mudanças:
+- FontSize padrão em 576x1024: 13
+- MarginV padrão: 48 (corrige legenda indo pro topo)
+- Mantém watermark por cima
+
+Arquivos:
+- core/video_render_ffmpeg.py
+- README.md

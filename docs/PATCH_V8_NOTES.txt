@@ -1,0 +1,11 @@
+PATCH V8 — Bottom Safe Caption
+=============================
+
+Mudanças:
+- Fonte reduzida (18 -> 15 em 576x1024)
+- Legenda empurrada para o rodapé (~20% da altura)
+- Watermark reduzida para 6% da largura
+
+Arquivos:
+- core/video_render_ffmpeg.py
+- README.md

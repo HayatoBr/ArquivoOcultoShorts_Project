@@ -1,0 +1,9 @@
+Adicione/ajuste no config/config.yml:
+
+video:
+  fps: 30
+  images_dir: assets/images
+
+render:
+  enabled: true
+  out_mp4: output/short.mp4

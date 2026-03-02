@@ -1,0 +1,1 @@
+PATCH V11: Fix import for cinematic subs (core package + sys.path root)

@@ -1,0 +1,20 @@
+# Integração sugerida para scripts/generate_images.py
+
+# Importar:
+from core.agents.channel_anchor_manager import get_channel_anchor, save_channel_anchor
+
+# Após carregar job_dir:
+project_root = Path(".")
+
+channel_anchor = None
+if (img_cfg.get("channel_character") or {}).get("enabled", False):
+    channel_anchor = get_channel_anchor(project_root)
+
+# Prioridade:
+if channel_anchor and (img_cfg.get("channel_character") or {}).get("priority") == "channel_first":
+    anchor_text = channel_anchor
+elif not anchor_text and channel_anchor:
+    anchor_text = channel_anchor
+
+# Se gerar novo anchor via LLM e quiser persistir globalmente:
+# save_channel_anchor(project_root, anchor_text)

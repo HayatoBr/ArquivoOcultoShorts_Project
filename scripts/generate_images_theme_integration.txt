@@ -1,0 +1,17 @@
+# Integração sugerida em generate_images.py
+
+from core.agents.theme_presets_manager import resolve_theme_preset
+
+theme_info = resolve_theme_preset(text)
+theme_name = theme_info["theme"]
+theme_preset = theme_info["preset"]
+
+# Aplicar antes de instanciar PromptVisualAgent:
+if theme_preset:
+    channel_profile = (channel_profile + ", " + theme_preset.get("visual_profile", "")).strip(", ")
+    channel_negative = (channel_negative + ", " + theme_preset.get("negative_profile", "")).strip(", ")
+    # opcional: concatenar character_anchor_hint ao anchor_text
+
+# Registrar no report:
+report["theme_detected"] = theme_name
+report["theme_preset_applied"] = theme_preset

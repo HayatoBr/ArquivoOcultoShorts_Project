@@ -1,0 +1,22 @@
+# Large/generated
+output/
+assets/
+secrets/
+models/
+*.safetensors
+*.ckpt
+*.pt
+*.bin
+*.onnx
+*.wav
+*.mp4
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Logs
+*.log

@@ -1,0 +1,12 @@
+PATCH V7 — Subtitle Bottom + Watermark On Top
+===========================================
+
+Mudanças:
+- Subtitles são aplicadas primeiro, watermark é aplicada por último (fica por cima).
+- FontSize padrão em 576x1024 caiu para 18.
+- MarginV padrão aumentou para 140.
+- Watermark ratio padrão caiu para 0.07.
+
+Arquivos:
+- core/video_render_ffmpeg.py
+- README.md

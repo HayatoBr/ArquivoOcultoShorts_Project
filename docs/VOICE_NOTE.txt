@@ -1,0 +1,11 @@
+Narração (por enquanto)
+----------------------
+Se você ainda não tem TTS implementado, pode colocar QUALQUER arquivo WAV em:
+assets/voice/narration.wav
+
+O mixer vai aplicar ducking automático em cima da música e SFX.
+
+Próximo passo do projeto:
+- TTS local (gerar narration.wav automaticamente)
+- Whisper local (gerar legendas)
+- Render de vídeo (Ken Burns + watermark top-right + look documental)

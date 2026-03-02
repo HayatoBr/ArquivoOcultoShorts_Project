@@ -1,0 +1,6 @@
+# PATCH NOTES:
+# - Adds zero-config preset locking per job:
+#   After script generation, auto-selects a theme preset (A/B) and writes:
+#     job_theme_preset_id.txt
+#     job_theme_preset_meta.json
+#   This makes renders repeatable and fully automatic.

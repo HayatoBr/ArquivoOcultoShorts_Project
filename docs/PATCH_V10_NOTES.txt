@@ -1,0 +1,10 @@
+PATCH V10 — Cinematic Subs (SRT -> ASS)
+======================================
+
+Inclui:
+- core/subs_cinematic_ass.py
+- tools/make_cinematic_subs.ps1 + tools/make_cinematic_subs.py
+- core/video_render_ffmpeg.py atualizado para usar legendas ASS
+
+Objetivo:
+- Legendas mais discretas (2 linhas) e com “fade” para visual cinematográfico.

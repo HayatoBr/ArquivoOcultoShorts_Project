@@ -1,0 +1,25 @@
+Render de Vídeo (Short 60s)
+==========================
+
+Gera:
+- output/short.mp4
+
+Entradas:
+- output/mixed_audio.wav (obrigatório)
+- output/subs.srt (opcional)
+- assets/watermark/watermark.png (opcional)
+- assets/images/ (opcional)
+
+Sem imagens:
+- fundo preto + watermark + legendas (se existirem).
+
+Com imagens:
+- coloque pelo menos 1 imagem em assets/images/
+- ele usa a primeira com efeito Ken Burns (zoom leve).
+
+Rodar:
+- Pipeline completo (áudio + legenda + vídeo):
+  tools\run_short.ps1
+
+- Só render de vídeo (depois do áudio pronto):
+  tools\render_video.ps1

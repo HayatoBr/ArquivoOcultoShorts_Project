@@ -1,0 +1,2 @@
+Audio V1 implementado: seleção automática de music + SFX.
+Próximo: mixagem FFmpeg (ducking) e render do vídeo.
