@@ -36,7 +36,6 @@ srt>=3.5.3
 
 # Whisper (legendas)
 openai-whisper>=20231117
-duckduckgo-search>=7.0.0
 
 # Gemini (SDK novo recomendado)
 google-genai>=0.6.0

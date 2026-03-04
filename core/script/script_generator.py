@@ -242,7 +242,13 @@ def generate_short_script(cfg: Dict[str, Any] | None = None, out_path: str | Non
 
         # Also create a minimal scenes.json for downstream image prompting (1 scene for now)
         try:
-            scenes = build_scene_prompts(llm_text, max_scenes=1)
+            images_cfg = (cfg.get("images") or {}) if cfg else {}
+            try:
+                max_s = int(images_cfg.get("max_scenes") or 4)
+            except Exception:
+                max_s = 4
+            max_s = int(max(4, min(6, max_s)))
+            scenes = build_scene_prompts(llm_text, max_scenes=max_s, cfg=cfg, test_mode=bool(test_mode))
             scenes_path = script_path.with_name("scenes.json")
             _save_json(scenes_path, [s.__dict__ for s in scenes])
         except Exception:

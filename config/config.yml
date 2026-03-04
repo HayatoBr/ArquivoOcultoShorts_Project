@@ -7,6 +7,8 @@ paths:
   ffmpeg_exe: "C:/ffmpeg/bin/ffmpeg.exe"
   piper_exe:  "C:/piper/piper.exe"
   piper_model: "C:/piper/models/pt_BR-faber-medium.onnx"
+  whisper_exe: "C:/whisper-standalone/faster-whisper-xxl.exe"
+  whisper_model_dir: "C:/whisper-standalone/_models"
 
 video:
   seconds: 60
@@ -22,9 +24,20 @@ images:
 
 image_style:
   # identidade visual fixa do canal (aplicada em toda imagem)
-  base_prompt: "cinematic, dramatic lighting, realistic, film grain, shallow depth of field, close-up framing, high detail"
+  base_prompt: "cinematic, documentary realism, film grain, high detail, dramatic lighting, shallow depth of field"
   # negativos fixos (anti-dedos/mãos etc.)
   negative_prompt: "text, watermark, logo, blurry, lowres, bad anatomy, bad hands, extra fingers, deformed, distorted face, mutated, disfigured, cropped, out of frame, jpeg artifacts"
+
+
+visual_translator:
+  enabled: true
+  provider: "auto"        # auto | openai | ollama
+  max_scenes: 4           # recomendado 4 (mais coerente)
+  kinds_order: ["environment", "detail", "environment", "climax"]
+  era_hint: "archival documentary, cinematic, Brazil/world, 1970s–2000s (adapt to topic)"
+  max_topic_hints: 8
+  max_visual_words: 35
+  max_prompt_words: 48
 
 tts:
   model_path: "C:/piper/models/pt_BR-faber-medium.onnx"

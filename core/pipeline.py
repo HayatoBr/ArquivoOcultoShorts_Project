@@ -143,6 +143,21 @@ def run(test_mode: bool = False, **_ignored_kwargs):
         policy_findings = getattr(res, "policy_findings", [])  # type: ignore[attr-defined]
     _ok(f"roteiro gerado em {script_path} ({script_provider}) em {time.time()-s0:.1f}s")
 
+    # 2b) Director QA (Ollama) - valida e reescreve roteiro se necessário
+    try:
+        from core.agents.director_agent import apply_director_gate
+        llm_director = _build_llm_adapter(cfg)
+        final_text, director_report = apply_director_gate(cfg, _read_text(script_path), llm=llm_director, test_mode=test_mode)
+        (jobp / "director_report.json").write_text(json.dumps(director_report, ensure_ascii=False, indent=2), encoding="utf-8")
+        if not director_report.get("approved", True):
+            _warn(f"diretor reprovou roteiro (score={director_report.get('final_score')}). Tentando seguir com a melhor versão disponível...")
+        # se o texto mudou (rewrite), sobrescreve o script.txt
+        if final_text and final_text.strip() and final_text.strip() != _read_text(script_path).strip():
+            Path(script_path).write_text(final_text.strip(), encoding="utf-8")
+            _ok("roteiro ajustado pelo Diretor (Ollama)")
+    except Exception as e:
+        _warn(f"Diretor (Ollama) indisponível/falhou: {e}")
+
     # 3) Fix theme preset (optional)
     _step(3, total_steps, "Preset do tema (opcional)")
     try:
@@ -218,13 +233,13 @@ def run(test_mode: bool = False, **_ignored_kwargs):
     srt_path = str(jobp / "subs.srt")
     ass_path = str(jobp / "subs.ass")
     retry(lambda: transcribe_whisper(cfg, mixed_wav, srt_path), attempts=2, base_delay=1.0)
-    make_cinematic_ass_from_srt(srt_path, ass_path, cfg=cfg)
+    make_cinematic_ass_from_srt(cfg, srt_path, ass_path)
     _ok(f"legendas geradas em {ass_path}")
 
     # 7) Render
     _step(7, total_steps, "Render final (FFmpeg)")
     out_mp4 = str(jobp / "short.mp4")
-    retry(lambda: render_short_video(cfg, images, mixed_wav, ass_path, out_mp4, seconds=seconds), attempts=2, base_delay=1.0)
+    retry(lambda: render_short_video(cfg, job_dir, seconds, out_mp4), attempts=2, base_delay=1.0)
     _ok(f"vídeo final em {out_mp4}")
 
     _copy_latest(out_mp4)

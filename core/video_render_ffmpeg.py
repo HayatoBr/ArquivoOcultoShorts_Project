@@ -52,8 +52,14 @@ def render_short_video(cfg: dict, job_dir: str, seconds: int, out_path: str) -> 
     subs_ass = os.path.join(job_dir, "subs.ass")
 
     if not os.path.isfile(audio_path):
-        # fallback legacy
-        audio_path = os.path.join("output", "mixed_audio.wav")
+        # fallback: project uses mix.wav in jobs
+        alt1 = os.path.join(job_dir, "mix.wav")
+        alt2 = os.path.join("output", "mix.wav")
+        alt3 = os.path.join("output", "mixed_audio.wav")
+        for cand in (alt1, alt2, alt3):
+            if os.path.isfile(cand):
+                audio_path = cand
+                break
     if not os.path.isfile(subs_ass):
         subs_ass = os.path.join("output", "subs.ass")
 

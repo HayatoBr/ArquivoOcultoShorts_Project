@@ -19,7 +19,7 @@ def transcribe_whisper(cfg: dict, audio_path: str, out_srt: str) -> dict:
         args += ["--model_dir", model_dir]
     args += [str(x) for x in extra]
 
-    p = subprocess.run(args, capture_output=True, text=True)
+    p = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace')
     if p.returncode != 0:
         raise RuntimeError("Whisper standalone falhou:\n" + (p.stderr or p.stdout or ""))
 

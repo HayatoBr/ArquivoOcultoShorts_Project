@@ -1,6 +1,8 @@
 # Large/generated
 output/
-assets/
+assets/**
+!assets/music/.gitkeep
+!assets/watermark/.gitkeep
 secrets/
 models/
 *.safetensors

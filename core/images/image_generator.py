@@ -70,7 +70,9 @@ def generate_images_from_script(cfg: Dict[str, Any], script_path: str, out_dir: 
         raise RuntimeError("script.txt vazio")
 
     # Build scene prompts (3-6), then clamp to max_images
-    scenes = build_scene_prompts(text, max_scenes=max(3, max_images), cfg=cfg)
+    cfg2 = dict(cfg)
+    cfg2["job_dir"] = str(job_dir)
+    scenes = build_scene_prompts(text, max_scenes=max(3, max_images), cfg=cfg2)
     scenes = scenes[:max_images]
 
     scenes_path = job_dir / "scenes.json"

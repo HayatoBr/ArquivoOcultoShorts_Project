@@ -123,49 +123,90 @@ def fetch_extract(title: str, cfg: Optional[Dict[str, Any]] = None, sentences: i
 
 
 def get_wiki_doc_for_channel(cfg: Optional[Dict[str, Any]] = None, lang: str = "pt", **kwargs) -> WikiDoc:
-    """Retorna um documento base para alimentar o roteirista (Gemini/Ollama).
+    """Retorna um documento base para alimentar o roteirista.
 
-    IMPORTANTE:
-    - Para evitar "script poluído" no fallback (quando Gemini/Ollama não estiverem disponíveis),
-      retornamos APENAS 1 título + extrato.
-    - Também evitamos termos altamente sensíveis (ex.: abuso sexual envolvendo menores) já na seleção.
+    Objetivo: puxar temas "investigativos", mas seguros para Shorts (monetização).
+    Faz um filtro best-effort por título + extrato para evitar temas sensíveis.
     """
+    from core.agents.safety_gate import scan_text, should_block
+
+    # Prefer "mistérios" e "arquivos" (evitar crimes pesados/menores).
     queries_pt = [
-        "caso não resolvido",
-        "desaparecimento misterioso",
         "mistério histórico",
-        "evento histórico controverso",
-        "investigação criminal famosa",
+        "documentos secretos história",
+        "projeto secreto governo",
+        "fenômeno inexplicável",
+        "desaparecimento de navio avião mistério",
+        "tesouro perdido lenda",
+        "fraude histórica famosa",
+        "golpe famoso história",
+        "espionagem caso histórico",
+        "código cifrado enigma",
+        "incidente misterioso arquivo",
+        "cidade perdida arqueologia",
     ]
     queries_en = [
-        "unsolved case",
-        "mysterious disappearance",
         "historical mystery",
-        "controversial historical event",
-        "famous criminal investigation",
+        "declassified secret project",
+        "unsolved historical enigma",
+        "unexplained phenomenon",
+        "mysterious ship disappearance",
+        "lost treasure legend",
+        "famous historical fraud",
+        "classic heist mystery",
+        "espionage historical case",
+        "cipher code mystery",
+        "declassified incident",
+        "lost city archaeology",
     ]
     queries = queries_en if (lang or "pt").lower().startswith("en") else queries_pt
 
+    # Hard blacklist for titles (fast filter)
     blacklist = [
-        "abuso", "abuso sexual", "pedof", "porn", "estupro", "criança", "infantil",
+        "abuso", "abuso sexual", "estupro", "pedof", "porn", "pornografia", "criança", "infantil",
+        "necrof", "decapit", "desmembr", "tortur", "massacre",
     ]
 
-    pick = random.choice(queries)
-    titles = search_titles(pick, cfg=cfg, limit=8, lang=lang)
-    if not titles:
-        return WikiDoc("", title="", url="")
-
-    # Filter obviously sensitive titles (best-effort; policy agent still enforces later)
-    filtered = []
-    for t in titles:
-        tl = (t or "").lower()
-        if any(b in tl for b in blacklist):
+    # Try multiple picks until we find a safe extract
+    tries = 0
+    max_tries = 12
+    sess_titles: list[str] = []
+    while tries < max_tries:
+        tries += 1
+        pick = random.choice(queries)
+        titles = search_titles(pick, cfg=cfg, limit=10, lang=lang)
+        if not titles:
             continue
-        filtered.append(t)
-    if not filtered:
-        filtered = titles  # if everything filtered, fall back to original list
+        sess_titles = titles
 
-    title = filtered[0]
-    extract = fetch_extract(title, cfg=cfg, sentences=10, lang=lang).strip()
-    url = _wiki_page_url(title, lang=lang) if title else ""
-    return WikiDoc(f"Título: {title}\n{extract}".strip(), title=title, url=url)
+        # Filter titles
+        filtered = []
+        for t in titles:
+            tl = (t or "").lower()
+            if any(b in tl for b in blacklist):
+                continue
+            filtered.append(t)
+
+        # If everything filtered, try again with another query
+        if not filtered:
+            continue
+
+        # Try top few candidates
+        for title in filtered[:6]:
+            extract = fetch_extract(title, cfg=cfg, sentences=10, lang=lang).strip()
+            url = _wiki_page_url(title, lang=lang) if title else ""
+            doc_txt = f"Título: {title}\n{extract}".strip()
+            findings = scan_text(cfg, doc_txt)
+            if should_block(cfg, findings):
+                continue
+            # If warnings exist (crime hints) we still accept, but script prompt already forbids gore.
+            return WikiDoc(doc_txt, title=title, url=url)
+
+    # Fallback: first available title, no filtering (still better than empty)
+    if sess_titles:
+        title = sess_titles[0]
+        extract = fetch_extract(title, cfg=cfg, sentences=10, lang=lang).strip()
+        url = _wiki_page_url(title, lang=lang) if title else ""
+        return WikiDoc(f"Título: {title}\n{extract}".strip(), title=title, url=url)
+
+    return WikiDoc("", title="", url="")
