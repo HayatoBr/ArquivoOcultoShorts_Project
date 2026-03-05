@@ -45,8 +45,6 @@ paths:
   ffmpeg_exe: "C:/ffmpeg/bin/ffmpeg.exe"
   piper_exe:  "C:/piper/piper.exe"
   piper_model: "C:/piper/models/pt_BR-faber-medium.onnx"
-  # Faster-Whisper (standalone) / Faster-Whisper-XXL (exe)
-  whisper_exe: "C:/whisper-standalone/faster-whisper-xxl.exe"
 
 images:
   model_path: "models/dreamshaper_8.safetensors"
@@ -163,20 +161,9 @@ Na raiz do projeto (duplo clique):
 
 > Todos chamam `tools/run_short.ps1` e já apontam para o Python do `.venv` automaticamente (se existir).
 
-## Visual Translator (cenas representativas)
 
-O pipeline gera cenas para imagens via um 'Diretor de Arte' (LLM) que **não copia frases do roteiro**.
-Ele retorna 4 cenas em JSON (environment/detail/environment/climax) com descrições visuais em inglês e limite de tamanho para evitar CLIP>77.
+### Legendas (Whisper)
 
-Configuração em `config/config.yml`:
-- `visual_translator.enabled`
-- `visual_translator.provider` (`auto` usa Ollama no TestMode e OpenAI em produção)
-- `visual_translator.max_scenes` (recomendado 4)
-
-Dica: mantenha `image_style.base_prompt` sem `close-up framing`; o enquadramento é decidido pelo tipo de cena.
-
-## Troubleshooting
-
-- **Erro** `make_cinematic_ass_from_srt() got multiple values for argument 'cfg'`: atualize para a versão mais recente do projeto (bug corrigido no pipeline).
-- **Erro** `Nenhum caminho configurado para paths.whisper_exe`: defina `paths.whisper_exe` no `config.yml` apontando para o `faster-whisper-xxl.exe`.
+- Se `paths.whisper_exe` estiver configurado no `config.yml`, o projeto usa o Whisper CLI.
+- Se não estiver configurado, o pipeline tenta usar o pacote Python `openai-whisper` (fallback). Para instalar: `pip install -U openai-whisper`.
 

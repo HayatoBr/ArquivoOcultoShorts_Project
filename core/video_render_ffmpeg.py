@@ -45,103 +45,147 @@ def _ff_filter_path(p: str) -> str:
     p2 = p2.replace("'", r"\'")
     return p2
 
-def render_short_video(cfg: dict, job_dir: str, seconds: int, out_path: str) -> str:
-    # Inputs (prefer job_dir first, fallback to assets/output legacy)
-    images_dir = os.path.join(job_dir, "images")
-    audio_path = os.path.join(job_dir, "mixed_audio.wav")
-    subs_ass = os.path.join(job_dir, "subs.ass")
+def render_short_video(cfg: dict, job_dir: str, seconds: float, out_path: str) -> None:
+    """
+    Renderiza o SHORT usando as imagens do job_dir/images e o áudio mixado do job_dir/mix.wav.
 
-    if not os.path.isfile(audio_path):
-        # fallback: project uses mix.wav in jobs
-        alt1 = os.path.join(job_dir, "mix.wav")
-        alt2 = os.path.join("output", "mix.wav")
-        alt3 = os.path.join("output", "mixed_audio.wav")
-        for cand in (alt1, alt2, alt3):
-            if os.path.isfile(cand):
-                audio_path = cand
-                break
-    if not os.path.isfile(subs_ass):
-        subs_ass = os.path.join("output", "subs.ass")
-
+    Fixes incluídos:
+    - garante uso de TODAS as imagens (com crossfades) para evitar "apenas 1 imagem" no vídeo final
+    - aplica watermark por padrão (assets/watermark/watermark.png) se não configurado
+    - mantém legendas (.ass) se existirem
+    """
+    job = Path(job_dir)
+    images_dir = job / "images"
     imgs = _find_images(images_dir)
     if not imgs:
-        # fallback legacy single image
-        legacy_img = os.path.join("assets", "images", "scene1.png")
-        if os.path.isfile(legacy_img):
-            imgs = [legacy_img]
+        raise FileNotFoundError(f"Nenhuma imagem encontrada em: {images_dir}")
 
-    if not imgs:
-        raise FileNotFoundError("Nenhuma imagem encontrada para renderização (job/images ou assets/images/scene1.png).")
+    # Áudio (já deve estar mixado pela etapa anterior)
+    audio_path = job / "mix.wav"
+    if not audio_path.exists():
+        # compat: alguns jobs antigos
+        audio_path = job / "mixed_audio.wav"
+    if not audio_path.exists():
+        raise FileNotFoundError(f"Áudio mixado não encontrado: {audio_path}")
 
-    fps = int(cfg.get("video", {}).get("fps", 30))
-    w = int(cfg.get("images", {}).get("width", 576))
-    h = int(cfg.get("images", {}).get("height", 1024))
-    crf = int(cfg.get("video", {}).get("crf", 20))
-    preset = cfg.get("video", {}).get("preset", "veryfast")
-    watermark = None
-    wm_cfg = cfg.get('watermark', {})
-    if wm_cfg.get('enabled', False):
-        watermark = wm_cfg.get('image_path')
+    # Legendas opcionais
+    ass_path = job / "subs.ass"
+    if not ass_path.exists():
+        ass_path = None
 
-    # segment duration
+    # Config de vídeo
+    vcfg = (cfg.get("video") or {})
+    width = int(vcfg.get("width", 576))
+    height = int(vcfg.get("height", 1024))
+    fps = int(vcfg.get("fps", 30))
+
+    # Crossfade entre imagens (deixa claro que são múltiplas)
     n = len(imgs)
-    seg = max(1.0, float(seconds) / float(n))
+    fade = float(vcfg.get("xfade_seconds", 0.5))
+    fade = max(0.0, min(fade, 2.0))
 
-    ff = ffmpeg_path(cfg)
+    # total = n*seg - (n-1)*fade  => seg = (total + (n-1)*fade)/n
+    total = float(seconds)
+    seg = (total + (n - 1) * fade) / n if n > 0 else total
+    seg = max(0.5, seg)
 
-    cmd = [ff, "-y", "-hide_banner", "-loglevel", "error"]
+    # Watermark (default)
+    wcfg = (cfg.get("watermark") or {})
+    wm_enabled = bool(wcfg.get("enabled", True))
+    wm_path = wcfg.get("image_path")
+    if not wm_path:
+        # default relativo ao root do projeto
+        wm_path = str(Path("assets") / "watermark" / "watermark.png")
+    wm_opacity = float(wcfg.get("opacity", 0.85))
+    wm_scale = float(wcfg.get("scale", 0.18))  # fração da largura
+    wm_margin = int(wcfg.get("margin_px", 18))
+    wm_position = str(wcfg.get("position", "top-right")).lower()
 
-    # image inputs
+    # FFmpeg
+    ffmpeg = resolve_ffmpeg(cfg)
+    cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "warning"]
+
+    # Inputs de imagens
+    # -loop 1 + -t garante frames suficientes por segmento
     for img in imgs:
-        cmd += ["-loop", "1", "-t", f"{seg:.3f}", "-i", img]
+        cmd += ["-loop", "1", "-t", f"{seg + fade:.3f}", "-i", str(img)]
 
-    # audio input
-    cmd += ["-i", audio_path]
+    # Input de áudio
+    cmd += ["-i", str(audio_path)]
 
-    wm_index = None
-    if watermark and os.path.isfile(watermark):
-        cmd += ["-i", watermark]
-        wm_index = n + 1
-
-    # filter_complex: zoompan per image -> concat -> subtitles -> watermark overlay
-    fc_parts = []
-    vlabels = []
+    # Filtros de vídeo: escala/trim e encadeia xfade
+    fc = []
     for i in range(n):
-        dframes = int(seg * fps)
-        fc_parts.append(
-            f"[{i}:v]scale={w}:{h}:force_original_aspect_ratio=increase,"
-            f"crop={w}:{h},"
-            f"zoompan=z='min(zoom+0.0008,1.08)':d={dframes}:s={w}x{h}:fps={fps},"
-            f"format=yuv420p[v{i}]"
+        fc.append(
+            f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=cover,"
+            f"crop={width}:{height},setsar=1,format=rgba,trim=duration={seg:.3f},"
+            f"setpts=PTS-STARTPTS[v{i}]"
         )
-        vlabels.append(f"[v{i}]")
 
     if n == 1:
-        vcur = "[v0]"
+        v_last = "v0"
     else:
-        fc_parts.append("".join(vlabels) + f"concat=n={n}:v=1:a=0[vcat]")
-        vcur = "[vcat]"
+        # chain xfade
+        prev = "v0"
+        offset = seg - fade
+        for i in range(1, n):
+            out = f"xf{i}"
+            fc.append(
+                f"[{prev}][v{i}]xfade=transition=fade:duration={fade:.3f}:offset={offset:.3f}[{out}]"
+            )
+            prev = out
+            offset += seg - fade
+        v_last = prev
 
-    ass_filter = _ff_filter_path(subs_ass)
-    fc_parts.append(f"{vcur}subtitles='{ass_filter}'[vsub]")
-    vcur = "[vsub]"
+    # Watermark overlay
+    if wm_enabled and Path(wm_path).exists():
+        # adiciona wm como input extra
+        wm_index = n  # próximo índice depois das imagens
+        cmd = cmd[:-2] + ["-i", wm_path] + cmd[-2:]  # insere antes do áudio
+        # corrigir índices: áudio vira n+1
+        audio_index = n + 1
 
-    if wm_index is not None:
-        # bottom-right
-        fc_parts.append(f"[{wm_index}:v]format=rgba[wm]")
-        fc_parts.append(f"{vcur}[wm]overlay=W-w-20:H-h-20[vout]")
-        vcur = "[vout]"
+        # escala wm proporcional à largura
+        wm_w = max(16, int(width * wm_scale))
+        fc.append(f"[{wm_index}:v]scale={wm_w}:-1,format=rgba,colorchannelmixer=aa={wm_opacity:.3f}[wm]")
 
-    filter_complex = ";".join(fc_parts)
+        if wm_position in ("top-left", "tl"):
+            x = wm_margin
+            y = wm_margin
+        elif wm_position in ("bottom-left", "bl"):
+            x = wm_margin
+            y = f"H-h-{wm_margin}"
+        elif wm_position in ("bottom-right", "br"):
+            x = f"W-w-{wm_margin}"
+            y = f"H-h-{wm_margin}"
+        else:  # top-right
+            x = f"W-w-{wm_margin}"
+            y = wm_margin
+
+        fc.append(f"[{v_last}][wm]overlay={x}:{y}:format=auto[vout]")
+        vmap = "[vout]"
+    else:
+        audio_index = n
+        vmap = f"[{v_last}]"
+        fc.append(f"{vmap}format=yuv420p[vout]")
+        vmap = "[vout]"
+
+    # Legendas (ASS) por último no vídeo
+    if ass_path is not None:
+        # escape para Windows
+        ass_escaped = str(ass_path).replace("\\", "\\\\").replace(":", "\\:")
+        fc.append(f"{vmap}ass='{ass_escaped}'[vfinal]")
+        vmap = "[vfinal]"
+
+    filter_complex = ";".join(fc)
 
     cmd += [
         "-filter_complex", filter_complex,
-        "-map", vcur,
-        "-map", f"{n}:a",
-        "-r", str(fps),
+        "-map", vmap,
+        "-map", f"{audio_index}:a",
         "-c:v", "libx264",
-        "-preset", str(preset),
-        "-crf", str(crf),
+        "-pix_fmt", "yuv420p",
+        "-r", str(fps),
         "-c:a", "aac",
         "-b:a", "192k",
         "-shortest",
@@ -149,4 +193,3 @@ def render_short_video(cfg: dict, job_dir: str, seconds: int, out_path: str) -> 
     ]
 
     run_cmd(cmd)
-    return out_path

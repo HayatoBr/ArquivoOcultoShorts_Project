@@ -60,7 +60,12 @@ def split_script_into_scenes(script_text: str, max_scenes: int = 5) -> List[Scen
         if i >= len(sents):
             break
 
-    kinds_cycle = ["character", "environment", "detail", "character", "climax", "environment"]
+    # Para SHORT padrão (4 imagens): fixa a sequência para dar ritmo investigativo
+    # 1) ambiente/estabelecimento, 2) detalhe/evidência, 3) ambiente/escala, 4) clímax/quadro de evidências
+    if int(num_images) == 4:
+        kinds_cycle = ["environment", "detail", "environment", "climax"]
+    else:
+        kinds_cycle = ["character", "environment", "detail", "character", "climax", "environment"]
     scenes: List[Scene] = []
     for j, chunk in enumerate(chunks, start=1):
         kind = kinds_cycle[(j - 1) % len(kinds_cycle)]

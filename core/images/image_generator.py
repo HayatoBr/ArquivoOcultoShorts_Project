@@ -48,6 +48,10 @@ def _load_sd15_pipe(cfg: Dict[str, Any]):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pipe = pipe.to(device)
+    try:
+        pipe.set_progress_bar_config(disable=True)
+    except Exception:
+        pass
 
     # Memory knobs
     try:
@@ -70,9 +74,7 @@ def generate_images_from_script(cfg: Dict[str, Any], script_path: str, out_dir: 
         raise RuntimeError("script.txt vazio")
 
     # Build scene prompts (3-6), then clamp to max_images
-    cfg2 = dict(cfg)
-    cfg2["job_dir"] = str(job_dir)
-    scenes = build_scene_prompts(text, max_scenes=max(3, max_images), cfg=cfg2)
+    scenes = build_scene_prompts(text, max_scenes=max(3, max_images), cfg=cfg)
     scenes = scenes[:max_images]
 
     scenes_path = job_dir / "scenes.json"
@@ -96,16 +98,35 @@ def generate_images_from_script(cfg: Dict[str, Any], script_path: str, out_dir: 
         print(f"[IMG] prompt: {sc.prompt}")
         print(f"[IMG] negative: {sc.negative_prompt}")
 
+        def _cb(step, timestep, latents):
+            # callback do diffusers: step é 0-based
+            try:
+                s = int(step) + 1
+            except Exception:
+                s = step
+            if s == 1 or s == steps or (isinstance(s, int) and s % 5 == 0):
+                print(f"[IMG] ... step {s}/{steps}", flush=True)
+
         t0 = time.time()
-        img = pipe(
-            prompt=sc.prompt,
-            negative_prompt=sc.negative_prompt,
-            num_inference_steps=steps,
-            guidance_scale=cfg_scale,
-            width=w,
-            height=h,
-            generator=gen,
-        ).images[0]
+        try:
+            img = pipe(
+                prompt=sp.prompt,
+                negative_prompt=sp.negative,
+                num_inference_steps=steps,
+                guidance_scale=cfg_scale,
+                generator=gen,
+                callback=_cb,
+                callback_steps=1,
+            ).images[0]
+        except TypeError:
+            # compat com versões do diffusers que não suportam callback
+            img = pipe(
+                prompt=sp.prompt,
+                negative_prompt=sp.negative,
+                num_inference_steps=steps,
+                guidance_scale=cfg_scale,
+                generator=gen,
+            ).images[0]
         dt = time.time() - t0
 
         out_file = outp / f"scene_{i:02d}.png"

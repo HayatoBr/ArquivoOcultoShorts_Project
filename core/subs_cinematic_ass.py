@@ -181,7 +181,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     with open(out_ass, "w", encoding="utf-8-sig") as f:
         f.writelines(lines)
 
-def make_cinematic_ass_from_srt(cfg: dict, srt_path: str, ass_path: str) -> dict:
+def make_cinematic_ass_from_srt(srt_path: str, ass_path: str, cfg: dict) -> dict:
     subs_cfg = cfg.get("subs") or {}
     video_cfg = cfg.get("video") or {}
     w = int(video_cfg.get("width", 576))

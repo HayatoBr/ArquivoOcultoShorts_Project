@@ -59,26 +59,24 @@ function Invoke-PythonAndLog([string]$code, [string]$label) {
   $oldEAP = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
 
-  # Capture ALL output (stdout+stderr)
-  $lines = & $PY -u -c $code 2>&1
-  $exitCode = $LASTEXITCODE
+  # Stream ALL output (stdout+stderr) line-by-line (evita "log travado")
+  $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+  $writer = New-Object System.IO.StreamWriter($logFile, $true, $utf8NoBom)
+  try {
+    & $PY -u -c $code 2>&1 | ForEach-Object {
+      $line = "$_"
+      $writer.WriteLine($line)
+      $writer.Flush()
 
-  $ErrorActionPreference = $oldEAP
-  $sw.Stop()
-
-  # Write full output to log
-  if ($lines -ne $null) {
-    $lines | Out-File -FilePath $logFile -Encoding UTF8 -Append
-  }
-
-  # Also print to console with light prefixing
-  foreach ($line in $lines) {
-    if ($null -eq $line) { continue }
-    if ($line -match "^(OK:|AVISO:|== |\[)") {
-      Write-Host ("[{0}] {1}" -f (NowTs), $line)
-    } else {
-      Write-Host ("[{0}] ... {1}" -f (NowTs), $line)
+      if ($line -match "^(OK:|AVISO:|== |\[)") {
+        Write-Host ("[{0}] {1}" -f (NowTs), $line)
+      } else {
+        Write-Host ("[{0}] ... {1}" -f (NowTs), $line)
+      }
     }
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $writer.Dispose()
   }
 
   if ($exitCode -ne 0) {
