@@ -1,5 +1,5 @@
 # =========================
-# ArquivoOcultoShorts - CONFIG PRODUÇÃO
+# ArquivoOcultoShorts - CONFIG PRODUÇÃO (CORRIGIDO)
 # =========================
 
 paths:
@@ -14,18 +14,16 @@ video:
   seconds: 60
   tts_fit_attempts: 3
   tts_fit_tolerance_sec: 1.5
+  wpm: 155
 
 images:
   model_path: "models/dreamshaper_8.safetensors"
   retry_attempts: 3
   retry_base_delay: 2
-  # quantas cenas/prompt por vídeo (3-6 recomendado)
   max_scenes: 6
 
 image_style:
-  # identidade visual fixa do canal (aplicada em toda imagem)
   base_prompt: "cinematic, dramatic lighting, realistic, film grain, shallow depth of field, close-up framing, high detail"
-  # negativos fixos (anti-dedos/mãos etc.)
   negative_prompt: "text, watermark, logo, blurry, lowres, bad anatomy, bad hands, extra fingers, deformed, distorted face, mutated, disfigured, cropped, out of frame, jpeg artifacts"
 
 tts:
@@ -34,6 +32,16 @@ tts:
 whisper:
   whisper_exe: "C:/whisper-standalone/faster-whisper-xxl.exe"
   model_dir: "C:/whisper-standalone/_models"
+
+# SEÇÃO ADICIONADA PARA EVITAR ERROS NAS LEGENDAS
+subs:
+  font_name: "Arial"
+  font_size: 20
+  primary_color: "&H00FFFFFF"  # Branco
+  outline_color: "&H00000000"  # Preto
+  outline_width: 1.5
+  shadow_depth: 2
+  margin_v: 40
 
 healthcheck:
   enabled: true
@@ -47,7 +55,7 @@ youtube_upload:
   enabled: false
 
 llm:
-  provider: "openai"           # openai | ollama
+  provider: "ollama"           # Alterado para ollama (gratuito/local)
   openai_model: "gpt-4o-mini"
   openai_temperature: 0.7
   openai_max_tokens: 900
@@ -55,14 +63,9 @@ llm:
   ollama_url: "http://127.0.0.1:11434"
   ollama_model: "llama3.2:latest"
   ollama_timeout: 120
-
   ollama_qa_enabled: true
-
-  ollama_fallback_models:
-    - "llama3.1:latest"
 
 research:
   ddg_enabled: true
   ddg_max_results: 5
-  # opcional: deixe vazio para usar query automática pelo nicho
   ddg_query: ""
