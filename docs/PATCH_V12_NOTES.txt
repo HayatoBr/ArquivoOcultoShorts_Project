@@ -1,1 +1,0 @@
-PATCH V12: Automatic cinematic ASS generation inside core/pipeline.py (one command). Includes README.md.

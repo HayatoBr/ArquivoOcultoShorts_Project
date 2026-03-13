@@ -1,6 +1,0 @@
-Tutorial de SFX sera entregue na proxima etapa.
-Pastas:
-- assets/sfx/ambience
-- assets/sfx/transitions
-- assets/sfx/hits
-- assets/sfx/archive

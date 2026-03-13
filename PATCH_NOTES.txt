@@ -1,0 +1,1 @@
+Pesquisa agora usa descoberta de tópicos, Wikipedia page.content, score investigativo, histórico de temas e travas de segurança para conteúdo sensível do YouTube.

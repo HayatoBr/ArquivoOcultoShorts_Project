@@ -1,24 +1,11 @@
-# Large/generated
-output/
-assets/**
-!assets/music/.gitkeep
-!assets/watermark/.gitkeep
-secrets/
-models/
-*.safetensors
-*.ckpt
-*.pt
-*.bin
-*.onnx
-*.wav
-*.mp4
-
-# Python
+.venv/
 __pycache__/
 *.pyc
-.venv/
-venv/
-.env
+output/
+assets/
+models/
+secrets/
 
-# Logs
-*.log
+# Chaves específicas
+client_secret.json
+youtube_token.json

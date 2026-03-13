@@ -1,1 +1,0 @@
-PATCH V15: Script auto (Wikipedia->Gemini->Ollama) + Image auto via AUTOMATIC1111 WebUI API (no ComfyUI). Updates core/pipeline.py and adds tools/check_sdwebui.ps1 + README.

@@ -1,7 +1,0 @@
-# Integração: em generate_images.py, chame resolve_theme_preset com job_id.
-# Exemplo:
-# job_id = job_dir.name
-# theme_info = resolve_theme_preset(text, llm=llm, cfg=cfg, job_id=job_id)
-#
-# E registre no report:
-# report["theme_selection"] = theme_info.get("selection", {})

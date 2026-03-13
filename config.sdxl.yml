@@ -1,0 +1,94 @@
+paths:
+  output_dir: "output"
+  ffmpeg_exe: "C:/ffmpeg/bin/ffmpeg.exe"
+  piper_exe: "C:/piper/piper.exe"
+  piper_model: "C:/piper/models/pt_BR-faber-medium.onnx"
+  whisper_exe: "C:/whisper-standalone/faster-whisper-xxl.exe"
+  whisper_model_dir: "C:/whisper-standalone/_models"
+
+runtime:
+  seed: 42
+  test_mode_topic: "colônia perdida de Roanoke"
+
+llm:
+  provider: "ollama"
+  ollama_url: "http://127.0.0.1:11434"
+  local_model: "qwen2.5:7b-instruct-q4_K_M"
+  scene_planner_model: "qwen2.5:7b-instruct-q4_K_M"
+  timeout_seconds: 180
+  script_temperature: 0.35
+  script_top_p: 0.82
+  script_num_predict: 260
+  scene_temperature: 0.22
+  scene_top_p: 0.75
+  scene_num_predict: 650
+
+script:
+  min_duration_seconds: 54
+  target_duration_seconds: 57
+  max_duration_seconds: 59
+  max_rewrites: 4
+  target_words_min: 138
+  target_words_max: 146
+  target_words_exact: 142
+  tts_words_per_second: 2.38
+
+images:
+  backend: "sdxl_lightning"
+  use_cuda: true
+  precision: "fp32"
+  width: 704
+  height: 1248
+  steps: 4
+  guidance_scale: 1.0
+  scheduler: "euler_a"
+  model_path: "models/sdxl/sd_xl_base_1.0_0.9vae.safetensors"
+  lightning_unet_path: "models/sdxl/sdxl_lightning_4step_unet.safetensors"
+  vae_path: "models/sdxl/sdxl_vae.safetensors"
+  min_scene_seconds: 4.0
+
+render:
+  fps: 30
+  short_seconds: 60
+  watermark_path: "assets/watermark/watermark.png"
+
+video:
+  fps: 30
+
+project:
+  short_seconds: 60
+
+channel:
+  description: "Arquivo Oculto investiga mistérios reais, casos não resolvidos, desaparecimentos documentados e eventos históricos controversos com narrativa cinematográfica e base documental."
+
+style:
+  base_style: "documentary photography, 35mm lens, realistic photojournalism, low-key lighting, muted colors, analog film grain, atmospheric depth, historical realism, vertical composition"
+  negative_prompt: "anime, cartoon, illustration, graphic, text, watermark, blurry, low quality, distorted, deformed, extra fingers, malformed hands, noisy, oversaturated, duplicate, floating objects"
+
+scene_planner:
+  min_scenes: 6
+  max_scenes: 6
+
+research:
+  use_wikipedia: true
+  use_ddgs: true
+  ddgs_max_results: 5
+  discover_from_categories: true
+  min_investigative_score: 6.5
+  history_file: "output/topic_history.json"
+
+assets:
+  music_dir: "assets/music"
+  sfx_dir: "assets/sfx"
+
+watermark:
+  enabled: true
+  path: "assets/watermark/watermark.png"
+
+
+youtube_safety:
+  enabled: true
+  avoid_graphic_violence: true
+  avoid_sexual_violence: true
+  avoid_self_harm_instructions: true
+  neutralize_sensitive_language: true

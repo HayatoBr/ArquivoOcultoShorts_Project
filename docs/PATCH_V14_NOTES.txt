@@ -1,1 +1,0 @@
-PATCH V14: Use relative path for subtitles filter to avoid drive-colon parsing; fallback escape C: -> C\:.

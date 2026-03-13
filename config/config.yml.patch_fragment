@@ -1,8 +1,0 @@
-# --- PATCH: Healthcheck (fail-fast) ---
-healthcheck:
-  enabled: true
-  hard_fail: false          # true = interrompe o pipeline se faltar algo crítico
-  min_free_disk_gb: 3.0
-  min_vram_free_mb: 800
-  # ffmpeg_path: "C:/ffmpeg/bin/ffmpeg.exe"
-  # piper_path:  "C:/piper/piper.exe"

@@ -1,47 +1,10 @@
-# ArquivoOcultoShorts - requirements (Python 3.11, Windows)
-# Observação: FFmpeg e Piper são dependências externas (não via pip).
-
-# PyTorch CUDA 12.1 (GTX 1660 Ti) — wheels oficiais
---extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.1.2+cu121
-torchvision==0.16.2+cu121
-torchaudio==2.1.2+cu121
-
-# Stable Diffusion (Diffusers)
-diffusers>=0.27.0,<0.32.0
-transformers>=4.41.0,<4.47.0
-accelerate>=0.30.0,<0.35.0
-safetensors>=0.4.2
-huggingface-hub>=0.23.0,<0.26.0
-peft>=0.11.0,<0.14.0
-
-# Core utils
-pyyaml>=6.0.1
-requests>=2.32.0
-tqdm>=4.66.0
-numpy>=1.26.0,<2.0.0
-pillow>=10.3.0
-python-dotenv>=1.0.1
-
-# Requests dependency alignment (evita RequestsDependencyWarning)
-urllib3>=2.0.7,<2.3
-charset-normalizer>=3.0.0,<4.0.0
-idna>=3.0,<4.0.0
-
-# Audio / subtitles helpers (pipeline)
-soundfile>=0.12.1
-pydub>=0.25.1
-pysrt>=1.1.2
-srt>=3.5.3
-
-# Whisper (legendas)
-openai-whisper>=20231117
-
-# Gemini (SDK novo recomendado)
-google-genai>=0.6.0
-
-# Compat / diagnostics
-psutil>=5.9.8
-
-# Web search (fallback Ollama)
-ddgs>=7.0.0
+openai>=1.40.0
+requests>=2.31.0
+PyYAML>=6.0.1
+ddgs>=6.16.1
+wikipedia>=1.4.0
+diffusers>=0.30.0
+transformers>=4.44.0
+accelerate>=0.33.0
+safetensors>=0.4.3
+Pillow>=10.4.0
