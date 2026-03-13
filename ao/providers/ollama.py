@@ -83,8 +83,8 @@ Canal:
 Tema:
 {packet['topic']}
 
-Base documental profunda:
-{packet['research_dump']}
+Base documental estruturada:
+{packet.get('research_dump_for_script') or packet['research_dump']}
 
 Regras obrigatórias:
 - escreva apenas UM parágrafo

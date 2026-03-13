@@ -16,7 +16,7 @@ def _split_sentences(text: str) -> List[str]:
     return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
 
 
-def _caps_line(text: str, max_len: int = 34) -> str:
+def _caps_line(text: str, max_len: int = 26) -> str:
     text = _clean_line(text)
     text = re.sub(r'[^\w\sÀ-ÿ-]', '', text, flags=re.UNICODE)
     words = text.split()
@@ -35,7 +35,7 @@ def generate_hook(topic: str, script: str) -> str:
         candidate = _caps_line(sentences[0])
         if len(candidate) >= 10:
             return candidate
-    topic = _caps_line(f'MISTÉRIO: {topic}')
+    topic = _caps_line(f'MISTÉRIO {topic}', 26)
     return topic or 'CASO SEM RESPOSTA'
 
 
@@ -44,11 +44,11 @@ def generate_overlay_lines(script: str, scene_count: int) -> List[str]:
     overlays: List[str] = []
     for idx, sentence in enumerate(sentences):
         if idx == 0:
-            overlays.append(_caps_line(sentence, 38))
+            overlays.append(_caps_line(sentence, 28))
             continue
         low = sentence.lower()
         if any(k in low for k in ['sumiu', 'desapareceu', 'misterio', 'mistério', 'sem resposta', 'investiga', 'busca', 'evid', 'oficial', 'relatos', 'testemunhas', 'estranho']):
-            overlays.append(_caps_line(sentence, 34))
+            overlays.append(_caps_line(sentence, 26))
         if len(overlays) >= scene_count:
             break
     while len(overlays) < scene_count:

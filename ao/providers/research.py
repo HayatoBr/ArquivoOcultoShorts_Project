@@ -10,6 +10,13 @@ import wikipedia
 from ddgs import DDGS
 
 try:
+    import bs4
+    import wikipedia.wikipedia as _wikipedia_module
+    _wikipedia_module.BeautifulSoup = lambda html, *args, **kwargs: bs4.BeautifulSoup(html, features="lxml")
+except Exception:
+    pass
+
+try:
     from ao.core.agents import dedupe_research_items
 except Exception:
     dedupe_research_items = None
@@ -100,22 +107,51 @@ def _topic_tokens(topic: str) -> set[str]:
     toks = re.findall(r"[a-z0-9à-ÿ]+", _clean_text(topic).lower())
     return {t for t in toks if len(t) >= 4}
 
+_TOPIC_KEY_STOPWORDS = {"voo","flight","caso","incidente","desaparecimento","desaparecimento_do","misterio","mistério","o","a","de","do","da","das","dos","the","of","and","airlines","airline"}
+
+def _topic_key(topic: str) -> str:
+    tokens = [t for t in sorted(_topic_tokens(topic)) if t not in _TOPIC_KEY_STOPWORDS]
+    return "_".join(tokens[:6])
+
+def _topic_in_history(topic: str, history: set[str]) -> bool:
+    slug = _slug(topic)
+    key = _topic_key(topic)
+    norm = _clean_text(topic).lower()
+    compact = re.sub(r"[^a-z0-9à-ÿ]+", "", norm)
+    candidates = {slug, key, norm, compact}
+    tokens = _topic_tokens(topic)
+    for item in history:
+        if not item:
+            continue
+        item_norm = _clean_text(item).lower()
+        item_compact = re.sub(r"[^a-z0-9à-ÿ]+", "", item_norm)
+        item_tokens = set(re.findall(r"[a-z0-9à-ÿ]+", item_norm))
+        if item in candidates or item_norm in candidates or item_compact in candidates:
+            return True
+        if key and item.startswith(key):
+            return True
+        if tokens and item_tokens and len(tokens & item_tokens) >= max(2, min(len(tokens), len(item_tokens))):
+            return True
+    return False
+
 def _load_history(path: Path) -> set[str]:
     if not path.exists():
         return set()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        out = set()
+        out: set[str] = set()
         if isinstance(data, list):
             for x in data:
                 if isinstance(x, str):
-                    out.add(x.strip().lower())
+                    value = _clean_text(x)
+                    if value:
+                        out.update({_slug(value), _topic_key(value), value.lower(), re.sub(r"[^a-z0-9à-ÿ]+", "", value.lower())})
                 elif isinstance(x, dict):
-                    for k in ("slug", "title"):
-                        v = str(x.get(k) or "").strip().lower()
-                        if v:
-                            out.add(v)
-        return out
+                    for k in ("slug", "title", "key"):
+                        value = _clean_text(str(x.get(k) or ""))
+                        if value:
+                            out.update({_slug(value), _topic_key(value), value.lower(), re.sub(r"[^a-z0-9à-ÿ]+", "", value.lower())})
+        return {x for x in out if x}
     except Exception:
         return set()
 
@@ -128,8 +164,20 @@ def _save_history(path: Path, title: str):
     except Exception:
         data = []
     slug = _slug(title)
-    if not any((isinstance(x, dict) and x.get("slug") == slug) or (isinstance(x, str) and x.lower() == title.lower()) for x in data):
-        data.append({"title": title, "slug": slug})
+    key = _topic_key(title)
+    title_norm = _clean_text(title)
+    compact = re.sub(r"[^a-z0-9à-ÿ]+", "", title_norm.lower())
+    existing = set()
+    for x in data:
+        if isinstance(x, str):
+            existing.update({_slug(x), _topic_key(x), _clean_text(x).lower(), re.sub(r"[^a-z0-9à-ÿ]+", "", _clean_text(x).lower())})
+        elif isinstance(x, dict):
+            for k in ("slug","title","key"):
+                v = _clean_text(str(x.get(k) or ""))
+                if v:
+                    existing.update({_slug(v), _topic_key(v), v.lower(), re.sub(r"[^a-z0-9à-ÿ]+", "", v.lower())})
+    if not ({slug, key, title_norm.lower(), compact} & existing):
+        data.append({"title": title_norm, "slug": slug, "key": key})
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def _topic_is_blocked(topic: str) -> bool:
@@ -272,9 +320,21 @@ def _extract_list_candidates(title: str, content: str) -> List[str]:
             out.append(c)
     return out[:25]
 
+def _safe_wikipedia_search(query: str, results: int = 12) -> List[str]:
+    """
+    Busca opcional na Wikipedia com tolerância a falhas.
+    Desativada por padrão porque a lib wikipedia pode travar em alguns ambientes Windows.
+    """
+    try:
+        return list(wikipedia.search(query, results=results) or [])
+    except Exception:
+        return []
+
+
 def _extract_topic_candidates(cfg: Dict[str, Any], channel_desc: str) -> List[str]:
     candidates: List[str] = []
     seen = set()
+
     def add(x: str):
         x = _clean_text(x)
         if not x or _topic_is_blocked(x):
@@ -283,19 +343,25 @@ def _extract_topic_candidates(cfg: Dict[str, Any], channel_desc: str) -> List[st
         if key not in seen:
             seen.add(key)
             candidates.append(x)
+
     for seed in SEED_TOPICS:
         add(seed)
-    if cfg.get("research", {}).get("discover_from_categories", True):
+
+    research_cfg = cfg.get("research", {}) or {}
+
+    # IMPORTANTE:
+    # A busca por categorias via wikipedia.search pode travar em alguns ambientes
+    # Windows/venv. Por segurança, agora ela fica DESLIGADA por padrão.
+    if research_cfg.get("use_wikipedia_search", False):
         for query in CATEGORY_QUERIES:
-            try:
-                for item in wikipedia.search(query, results=12):
-                    add(item)
-            except Exception:
-                continue
-    if cfg.get("research", {}).get("use_ddgs", True):
+            for item in _safe_wikipedia_search(query, results=12):
+                add(item)
+
+    if research_cfg.get("use_ddgs", True):
         for query in CATEGORY_QUERIES[:4]:
             for item in _ddgs_results(query, max_results=8, topic=query):
                 add(item.get("title") or "")
+
     return candidates[:80]
 
 def _choose_topic(cfg: Dict[str, Any], channel_desc: str, history_path: Path, logger) -> str:
@@ -304,7 +370,7 @@ def _choose_topic(cfg: Dict[str, Any], channel_desc: str, history_path: Path, lo
     scored: List[Tuple[float, str]] = []
     for cand in candidates:
         slug = _slug(cand)
-        if slug in history or cand.lower() in history:
+        if _topic_in_history(cand, history):
             continue
         title, summary, content = _wiki_page_content(cand)
         if not content and not summary:
@@ -313,7 +379,7 @@ def _choose_topic(cfg: Dict[str, Any], channel_desc: str, history_path: Path, lo
         if _is_list_page(title):
             for sub in _extract_list_candidates(title, content):
                 sslug = _slug(sub)
-                if sslug in history:
+                if _topic_in_history(sub, history):
                     continue
                 stitle, ssummary, scontent = _wiki_page_content(sub)
                 stext = f"{ssummary} {scontent[:2500]}"
@@ -327,6 +393,9 @@ def _choose_topic(cfg: Dict[str, Any], channel_desc: str, history_path: Path, lo
     if scored:
         scored.sort(reverse=True)
         return scored[0][1]
+    for seed in SEED_TOPICS:
+        if not _topic_in_history(seed, history):
+            return seed
     return random.choice(SEED_TOPICS)
 
 def _format_dump(topic: str, wiki_summary: str, wiki_content: str, items: Iterable[Dict[str, Any]], investigative_score: float) -> str:
@@ -364,7 +433,12 @@ def build_research_packet(cfg: Dict[str, Any], topic_hint: str, logger, project_
             pass
     research_items = [x for x in research_items if not _is_bad_research_result(title, x.get("title",""), x.get("snippet",""))][:28]
     investigative_score = _investigative_score(title, f"{wiki_summary} {wiki_content[:3000]}")
-    research_dump = _format_dump(title, wiki_summary, wiki_content, research_items, investigative_score)
+    structured_text = " ".join([
+        wiki_summary or "",
+        wiki_content[:5000] if wiki_content else "",
+        " ".join([f"{x.get('title','')}. {x.get('snippet','')}" for x in research_items[:18]])
+    ]).strip()
+    research_dump = build_clean_research_dump(structured_text)
     _save_history(history_path, title)
     logger.info(
         "Pesquisa pronta para tema: %s | wiki=%s | itens=%s | score=%s | history=%s",

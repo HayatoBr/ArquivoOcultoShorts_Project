@@ -5,6 +5,8 @@ import re
 from typing import Any, Dict, Iterable, List
 
 from ao.core.agents import build_scene_plan
+from ao.core.research_extractor import extract_research_facts
+from ao.core.fact_cleaner import clean_story_facts
 from ao.providers.research import build_research_packet
 
 try:
@@ -115,12 +117,17 @@ def _trim_to_word_window(text: str, target_min: int, target_max: int) -> str:
 
 def _fallback_script(topic: str, packet: Dict[str, Any], cfg: Dict[str, Any], target_words: int, attempt_index: int = 1) -> str:
     topic_clean = topic.strip()
-    items = packet.get("research_items") or []
     snippets = []
-    for item in items:
-        snippet = optimize_text_for_tts(item.get("snippet") or item.get("title") or "")
+    for fact in packet.get('story_facts') or []:
+        snippet = optimize_text_for_tts(fact or '')
         if snippet and snippet not in snippets:
             snippets.append(snippet)
+    if not snippets:
+        items = packet.get('research_items') or []
+        for item in items:
+            snippet = optimize_text_for_tts(item.get('snippet') or item.get('title') or '')
+            if snippet and snippet not in snippets:
+                snippets.append(snippet)
     snippets = snippets[:5] or [f"O caso de {topic_clean} permanece cercado por lacunas, versões conflitantes e poucas respostas definitivas."]
     intro = [
         f"Poucos casos despertam tantas dúvidas quanto {topic_clean}.",
@@ -179,6 +186,22 @@ def choose_best_attempt(attempts: Iterable[Dict[str, Any]], cfg: Dict[str, Any])
     return sorted(attempts, key=score)[0]
 
 
+def _compose_script_research_dump(topic: str, extracted: Dict[str, Any], cleaned: Dict[str, Any]) -> str:
+    parts = [f"TEMA: {topic}"]
+    if extracted.get("facts"):
+        parts.append("FATOS_CONFIRMADOS:\n- " + "\n- ".join(extracted["facts"]))
+    if extracted.get("timeline"):
+        parts.append("CRONOLOGIA_CURTA:\n- " + "\n- ".join(extracted["timeline"]))
+    if cleaned.get("story_facts"):
+        parts.append("PONTOS_NARRATIVOS:\n- " + "\n- ".join(cleaned["story_facts"]))
+    if cleaned.get("mystery_hooks"):
+        parts.append("GANCHOS_DE_MISTERIO:\n- " + "\n- ".join(cleaned["mystery_hooks"]))
+    return "\n\n".join(parts).strip()
+
+
+
+
+
 def _parse_scene_json(raw_text: str):
     if not raw_text:
         return None
@@ -193,6 +216,21 @@ def _parse_scene_json(raw_text: str):
 def generate_short_script(cfg: Dict[str, Any], project_root, test_mode: bool, topic_hint: str, logger):
     packet = build_research_packet(cfg, topic_hint, logger, project_root=project_root)
     topic = packet["topic"]
+
+    extracted = extract_research_facts(
+        cfg=cfg,
+        topic=topic,
+        research_dump=packet.get('research_dump', ''),
+        research_items=packet.get('research_items') or [],
+        logger=logger,
+    )
+    cleaned = clean_story_facts(cfg=cfg, extracted=extracted, logger=logger)
+    packet['research_extracted'] = extracted
+    packet['story_facts'] = cleaned.get('story_facts') or []
+    packet['mystery_hooks'] = cleaned.get('mystery_hooks') or []
+    packet['research_dump_for_script'] = _compose_script_research_dump(topic, extracted, cleaned)
+    logger.info('[SCRIPT] pré-roteiro estruturado | facts=%s | story_facts=%s | mystery_hooks=%s', len(extracted.get('facts') or []), len(packet['story_facts']), len(packet['mystery_hooks']))
+
     attempts: List[Dict[str, Any]] = []
     max_rewrites = int((cfg.get("script", {}) or {}).get("max_rewrites", 4))
     exact_targets = _pick_exact_word_targets(cfg, max_rewrites)
@@ -282,6 +320,10 @@ def generate_short_script(cfg: Dict[str, Any], project_root, test_mode: bool, to
         "scene_planner": planner_used,
         "meta": f"topic={topic} | source={best['source']} | words={best.get('words')} | target_words={best.get('target_words')} | estimated_seconds={estimated_seconds} | scene_planner={planner_used}",
         "research_dump": packet.get("research_dump", ""),
+        "research_dump_for_script": packet.get('research_dump_for_script', packet.get('research_dump', '')),
+        "research_extracted": packet.get('research_extracted') or {},
+        "story_facts": packet.get('story_facts') or [],
+        "mystery_hooks": packet.get('mystery_hooks') or [],
         "investigative_score": packet.get("investigative_score"),
         "history_path": packet.get("history_path"),
     }

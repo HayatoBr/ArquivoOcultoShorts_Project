@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any
+import os
 
 
 def _ffmpeg_path_for_filter(path_str: str) -> str:
@@ -11,6 +12,25 @@ def _ffmpeg_path_for_filter(path_str: str) -> str:
     text = text.replace("'", r"\\'")
     return text
 
+
+
+def _find_windows_font(render_cfg: dict | None = None) -> str | None:
+    render_cfg = render_cfg or {}
+    explicit = render_cfg.get('font_file') or render_cfg.get('font_path')
+    candidates = []
+    if explicit:
+        candidates.append(Path(str(explicit)))
+    win = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts'
+    candidates.extend([
+        win / 'arial.ttf',
+        win / 'ARIAL.TTF',
+        win / 'segoeui.ttf',
+        win / 'Tahoma.ttf',
+    ])
+    for cand in candidates:
+        if cand.exists():
+            return str(cand)
+    return None
 
 def _motion_expr(motion: str, fps: int, duration: float, width: int, height: int) -> str:
     d = max(2, int(round(duration * fps)))
@@ -54,19 +74,23 @@ def _escape_drawtext(text: str) -> str:
     return text.replace('\\', r'\\').replace(':', r'\:').replace("'", r"\'").replace('%', r'\%')
 
 
-def _drawtext_filter(current_video: str, overlays: List[Dict[str, Any]]) -> tuple[list[str], str]:
+def _drawtext_filter(current_video: str, overlays: List[Dict[str, Any]], render_cfg: dict | None = None) -> tuple[list[str], str]:
     parts = []
     label = current_video
+    font_path = _find_windows_font(render_cfg)
+    if not font_path:
+        return parts, label
+    font_expr = _ffmpeg_path_for_filter(font_path)
     for i, ov in enumerate(overlays or []):
         text = (ov.get('overlay_text') or '').strip()
         if not text:
             continue
         start = float(ov.get('start_seconds') or 0.0)
         end = float(ov.get('end_seconds') or start + 2.8)
-        escaped = _escape_drawtext(text.upper())
+        escaped = _escape_drawtext(text.upper()[:36])
         nxt = f'{current_video}dt{i}'
         parts.append(
-            f"[{label}]drawtext=font='Arial':text='{escaped}':fontcolor=white:fontsize=42:line_spacing=6:box=1:boxcolor=black@0.45:boxborderw=18:x=(w-text_w)/2:y=h*0.14:enable='between(t,{start:.3f},{end:.3f})'[{nxt}]"
+            f"[{label}]drawtext=fontfile='{font_expr}':text='{escaped}':fontcolor=white:fontsize=42:line_spacing=6:box=1:boxcolor=black@0.45:boxborderw=18:x=(w-text_w)/2:y=h*0.14:enable='between(t,{start:.3f},{end:.3f})'[{nxt}]"
         )
         label = nxt
     return parts, label
@@ -106,12 +130,12 @@ def render_video(ffmpeg, images, audio, out_video, fps=30, seconds=60, subtitles
     filter_parts.append(f'[{current_video}]{_overlay_chain(render_cfg)}[{current_video}fx]')
     current_video = f'{current_video}fx'
 
-    draw_parts, current_video = _drawtext_filter(current_video, overlays or [])
+    draw_parts, current_video = _drawtext_filter(current_video, overlays or [], render_cfg)
     filter_parts.extend(draw_parts)
 
     if subtitles and Path(subtitles).exists():
         sub_filter = _ffmpeg_path_for_filter(subtitles)
-        filter_parts.append(f"[{current_video}]subtitles='{sub_filter}'[{current_video}1]")
+        filter_parts.append(f"[{current_video}]subtitles=filename='{sub_filter}':charenc=UTF-8[{current_video}1]")
         current_video = f'{current_video}1'
     if watermark_index is not None:
         wm_width = int((render_cfg or {}).get('watermark_width', 120))
