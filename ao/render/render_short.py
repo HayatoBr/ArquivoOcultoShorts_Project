@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import List, Dict, Any
 
 
 def _ffmpeg_path_for_filter(path_str: str) -> str:
@@ -15,8 +16,8 @@ def _motion_expr(motion: str, fps: int, duration: float, width: int, height: int
     d = max(2, int(round(duration * fps)))
     motion = (motion or 'slow_push').strip().lower()
     progress = f"(on/{max(1, d-1)})"
-    cx = "iw/2-(iw/zoom/2)"
-    cy = "ih/2-(ih/zoom/2)"
+    cx = 'iw/2-(iw/zoom/2)'
+    cy = 'ih/2-(ih/zoom/2)'
     if motion == 'slow_pan_left':
         zoom = f"1.05+0.03*{progress}"
         x = f"max(0,{cx}-80*{progress})"
@@ -48,7 +49,30 @@ def _overlay_chain(render_cfg: dict | None = None) -> str:
     return f"noise=alls={grain}:allf=t+u,eq={eq},vignette={vignette}"
 
 
-def render_video(ffmpeg, images, audio, out_video, fps=30, seconds=60, subtitles=None, watermark=None, width=512, height=896, scene_durations=None, motions=None, render_cfg=None):
+def _escape_drawtext(text: str) -> str:
+    text = str(text or '')
+    return text.replace('\\', r'\\').replace(':', r'\:').replace("'", r"\'").replace('%', r'\%')
+
+
+def _drawtext_filter(current_video: str, overlays: List[Dict[str, Any]]) -> tuple[list[str], str]:
+    parts = []
+    label = current_video
+    for i, ov in enumerate(overlays or []):
+        text = (ov.get('overlay_text') or '').strip()
+        if not text:
+            continue
+        start = float(ov.get('start_seconds') or 0.0)
+        end = float(ov.get('end_seconds') or start + 2.8)
+        escaped = _escape_drawtext(text.upper())
+        nxt = f'{current_video}dt{i}'
+        parts.append(
+            f"[{label}]drawtext=font='Arial':text='{escaped}':fontcolor=white:fontsize=42:line_spacing=6:box=1:boxcolor=black@0.45:boxborderw=18:x=(w-text_w)/2:y=h*0.14:enable='between(t,{start:.3f},{end:.3f})'[{nxt}]"
+        )
+        label = nxt
+    return parts, label
+
+
+def render_video(ffmpeg, images, audio, out_video, fps=30, seconds=60, subtitles=None, watermark=None, width=512, height=896, scene_durations=None, motions=None, render_cfg=None, overlays=None):
     images = [str(Path(p)) for p in images]
     scene_durations = scene_durations or [float(seconds) / max(1, len(images))] * max(1, len(images))
     motions = motions or ['slow_push'] * len(images)
@@ -81,6 +105,10 @@ def render_video(ffmpeg, images, audio, out_video, fps=30, seconds=60, subtitles
     current_video = 'basev'
     filter_parts.append(f'[{current_video}]{_overlay_chain(render_cfg)}[{current_video}fx]')
     current_video = f'{current_video}fx'
+
+    draw_parts, current_video = _drawtext_filter(current_video, overlays or [])
+    filter_parts.extend(draw_parts)
+
     if subtitles and Path(subtitles).exists():
         sub_filter = _ffmpeg_path_for_filter(subtitles)
         filter_parts.append(f"[{current_video}]subtitles='{sub_filter}'[{current_video}1]")

@@ -14,12 +14,20 @@ from ao.core.script_generator import generate_short_script
 from ao.core.tts import generate_tts
 from ao.core.images import generate_images
 from ao.core.audio_mix_ffmpeg import mix_audio
+from ao.core.capcut_engine import build_capcut_plan
+from ao.core.sfx_planner import plan_sfx_events
 from ao.core.subs import simple_srt
 from ao.core.whisper_subs import generate_whisper_srt
 from ao.core.media_utils import get_wav_duration_seconds, write_json, allocate_scene_durations_from_srt, rebalance_scene_plan
 from ao.render.render_short import render_video
 from ao.core.style import get_style_base
 
+
+def _resolve_sfx_dir(cfg: Dict[str, Any], project_root: Path) -> str | None:
+    assets = cfg.get('assets', {}) or {}
+    raw = assets.get('sfx_dir', 'assets/sfx')
+    candidate = (project_root / raw).resolve()
+    return str(candidate) if candidate.exists() else None
 
 def _pick_music(cfg: Dict[str, Any], project_root: Path) -> str | None:
     assets = cfg.get("assets", {}) or {}
@@ -155,6 +163,7 @@ def run_pipeline(cfg: Dict[str, Any], project_root: Path, test_mode: bool, topic
     music = _pick_music(work_cfg, project_root)
     mixed_audio = job_dir / "mixed_audio.wav"
     if music:
+        # music mixed first; SFX are planned from CapCut beats after scene timing
         mix_audio(ffmpeg, str(narration_wav), music, str(mixed_audio), logger)
     else:
         logger.info("[AUDIO] Sem trilha encontrada; usando só narração")
@@ -182,6 +191,12 @@ def run_pipeline(cfg: Dict[str, Any], project_root: Path, test_mode: bool, topic
     logger.info('OK: cenas finais após clamp = %s', len(result['scene_prompts']))
     logger.info('OK: hold final após narração = %.2fs', max(0.0, seconds_target - (mixed_seconds or narration_seconds)))
 
+    capcut_plan = build_capcut_plan(result['topic'], result['script_clean'], result['scene_prompts'], seconds_target)
+    sfx_events = plan_sfx_events(capcut_plan, _resolve_sfx_dir(work_cfg, project_root))
+    if music and sfx_events:
+        mix_audio(ffmpeg, str(narration_wav), music, str(mixed_audio), logger, sfx_events=sfx_events)
+        mixed_seconds = get_wav_duration_seconds(mixed_audio)
+
     logger.info("== [6/8] Imagens (Diffusers) ==")
     images_dir = job_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
@@ -208,12 +223,14 @@ def run_pipeline(cfg: Dict[str, Any], project_root: Path, test_mode: bool, topic
         "watermark_enabled": bool(_resolve_watermark(work_cfg, project_root)),
         "investigative_score": result.get("investigative_score"),
         "topic_history_path": result.get("history_path"),
+        "capcut_plan": capcut_plan,
+        "sfx_events": sfx_events,
     }
     write_json(job_json, job_payload)
     logger.info("OK: job_data.json salvo em %s", job_json)
 
     logger.info("== [7/8] Render final ==")
     out_video = job_dir / "short.mp4"
-    render_video(ffmpeg=ffmpeg, images=images, audio=str(mixed_audio), out_video=str(out_video), fps=int(work_cfg.get("video", {}).get("fps", 30)), seconds=seconds_target, subtitles=str(srt_path), watermark=_resolve_watermark(work_cfg, project_root), width=int(work_cfg.get("images", {}).get("width", 512)), height=int(work_cfg.get("images", {}).get("height", 896)), scene_durations=scene_durations, motions=[scene.get("motion", "slow_push") for scene in result["scene_prompts"]], render_cfg=work_cfg.get("render", {}))
+    render_video(ffmpeg=ffmpeg, images=images, audio=str(mixed_audio), out_video=str(out_video), fps=int(work_cfg.get("video", {}).get("fps", 30)), seconds=seconds_target, subtitles=str(srt_path), watermark=_resolve_watermark(work_cfg, project_root), width=int(work_cfg.get("images", {}).get("width", 512)), height=int(work_cfg.get("images", {}).get("height", 896)), scene_durations=scene_durations, motions=[scene.get("motion", "slow_push") for scene in result["scene_prompts"]], render_cfg=work_cfg.get("render", {}), overlays=capcut_plan)
     logger.info("OK: vídeo final em %s", out_video)
     return job_dir
